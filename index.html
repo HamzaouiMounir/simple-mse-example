@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      video {
+        border: 1px solid black;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Media Source Extensions</h1>
+    <button>Load content</button>
+    <video autoplay controls></video>
+    <script>
+      (async () => {
+        const mediaSource = new MediaSource();
+
+        const video = document.querySelector("video");
+
+        const urls = [
+          "https://raw.githubusercontent.com/w3c/web-platform-tests/master/media-source/mp4/test.mp4",
+          "https://nickdesaulniers.github.io/netfix/demo/frag_bunny.mp4",
+          "https://nickdesaulniers.github.io/netfix/demo/frag_bunny.mp4",
+          "video.mp4",
+        ];
+
+        const request = (url) =>
+          fetch(url).then((response) => response.arrayBuffer());
+
+        // `urls.reverse()` stops at `.currentTime` : `9`
+        const files = await Promise.all(urls.map(request));
+        const mimeCodec = "video/mp4; codecs=avc1.42E01E, mp4a.40.2";
+
+        const media = await Promise.all(
+          files.map((file) => {
+            return new Promise((resolve) => {
+              let media = document.createElement("video");
+              let blobURL = URL.createObjectURL(new Blob([file]));
+              media.onloadedmetadata = async (e) => {
+                resolve({
+                  mediaDuration: media.duration,
+                  mediaBuffer: file,
+                });
+              };
+              media.src = blobURL;
+            });
+          })
+        );
+
+        mediaSource.addEventListener("sourceopen", sourceOpen);
+
+        video.src = URL.createObjectURL(mediaSource);
+
+        async function sourceOpen(event) {
+          if (MediaSource.isTypeSupported(mimeCodec)) {
+            const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+
+            for (let chunk of media) {
+              await new Promise((resolve) => {
+                sourceBuffer.appendBuffer(chunk.mediaBuffer);
+                sourceBuffer.onupdateend = (e) => {
+                  sourceBuffer.onupdateend = null;
+                  sourceBuffer.timestampOffset += chunk.mediaDuration;
+                  console.log(mediaSource.duration);
+                  resolve();
+                };
+              });
+            }
+
+            mediaSource.endOfStream();
+          } else {
+            console.warn(mimeCodec + " not supported");
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>
